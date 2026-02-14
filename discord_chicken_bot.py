@@ -77,36 +77,53 @@ async def add_penalty(interaction: discord.Interaction, 팀원들: str, 날짜: 
 
 # 인증
 @bot.tree.command(name="인증", description="치킨 먹은 사진 인증")
-@app_commands.describe(벌칙id="인증할 벌칙 ID")
-async def verify(interaction: discord.Interaction, 벌칙id: int):
+@app_commands.describe(
+    내이름="본인 이름 (예: 철수)",
+    사진="치킨 먹은 인증 사진 (선택사항)"
+)
+async def verify(interaction: discord.Interaction, 내이름: str, 사진: discord.Attachment = None):
     data = load_data()
     
-    # 벌칙 찾기
-    penalty = None
+    # 이름으로 미인증 벌칙 찾기
+    matching_penalties = []
     for p in data['penalties']:
-        if p['id'] == 벌칙id:
-            penalty = p
-            break
+        if not p['verified'] and 내이름 in p['losers']:
+            matching_penalties.append(p)
     
-    if penalty is None:
-        await interaction.response.send_message(f"❌ 벌칙 ID #{벌칙id}를 찾을 수 없습니다.", ephemeral=True)
+    if not matching_penalties:
+        await interaction.response.send_message(
+            f"❌ '{내이름}' 님의 미인증 벌칙을 찾을 수 없습니다.\n"
+            f"이름을 정확히 입력했는지 확인해주세요.",
+            ephemeral=True
+        )
         return
     
-    if penalty['verified']:
-        await interaction.response.send_message(f"✅ 이미 인증된 벌칙입니다.", ephemeral=True)
-        return
+    # 가장 최근 벌칙 선택
+    penalty = sorted(matching_penalties, key=lambda x: x['created_at'], reverse=True)[0]
     
     # 인증 처리
     penalty['verified'] = True
     penalty['verified_at'] = datetime.now().isoformat()
     penalty['verified_by'] = str(interaction.user)
+    
+    # 사진이 있으면 URL 저장
+    if 사진:
+        penalty['photo_url'] = 사진.url
+    
     save_data(data)
     
+    # 임베드 생성
     embed = discord.Embed(
         title="✅ 치킨 인증 완료!",
-        description=f"**벌칙 ID:** #{벌칙id}\n**날짜:** {penalty['date']}\n**팀원:** {', '.join(penalty['losers'])}",
+        description=f"**벌칙 ID:** #{penalty['id']}\n**날짜:** {penalty['date']}\n**팀원:** {', '.join(penalty['losers'])}",
         color=discord.Color.green()
     )
+    
+    # 사진이 있으면 임베드에 추가
+    if 사진:
+        embed.set_image(url=사진.url)
+        embed.add_field(name="📸 인증 사진", value="위 이미지 참조", inline=False)
+    
     embed.set_footer(text=f"인증자: {interaction.user.display_name}")
     
     await interaction.response.send_message(embed=embed)
@@ -268,7 +285,7 @@ async def help_command(interaction: discord.Interaction):
     
     commands_info = [
         ("**/벌칙추가**", "`/벌칙추가 팀원들:철수,영희,민수 [날짜:2024-01-15]`\n꼴등 팀 벌칙 등록"),
-        ("**/인증**", "`/인증 벌칙id:1`\n치킨 먹고 인증하기"),
+        ("**/인증**", "`/인증 내이름:철수 [사진:파일첨부]`\n치킨 먹고 인증하기 (사진 선택사항)"),
         ("**/인증취소**", "`/인증취소 벌칙id:1`\n인증 취소하기"),
         ("**/벌칙목록**", "`/벌칙목록 [상태:미인증]`\n벌칙 목록 보기 (전체/미인증/인증완료)"),
         ("**/치킨통계**", "`/치킨통계`\n개인별 통계 확인"),
