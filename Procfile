@@ -1,0 +1,1 @@
+worker: python discord_chicken_bot.py
